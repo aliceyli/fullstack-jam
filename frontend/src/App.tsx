@@ -4,7 +4,7 @@ import CssBaseline from "@mui/material/CssBaseline";
 import { createTheme, ThemeProvider } from "@mui/material/styles";
 import { useEffect, useState } from "react";
 import CompanyTable from "./components/CompanyTable";
-import { getCollectionsMetadata } from "./utils/jam-api";
+import { getCollectionsMetadata, ICollection } from "./utils/jam-api";
 import useApi from "./utils/useApi";
 
 const darkTheme = createTheme({
@@ -23,9 +23,13 @@ function App() {
 
   useEffect(() => {
     if (selectedCollectionId) {
-      window.history.pushState({}, "", `?collection=${selectedCollectionId}`);
+      window.history.pushState({}, "", `?collection=${selectedCollectionId}`); // TODO: when we push the selected collection, the back button doesn't seem to respond by taking us to that view. debug if there's time
     }
   }, [selectedCollectionId]);
+
+  const handleCollectionChange = (collection: ICollection) => {
+    setSelectedCollectionId(collection.id);
+  }
 
   return (
     <ThemeProvider theme={darkTheme}>
@@ -43,13 +47,12 @@ function App() {
               {collectionResponse?.map((collection) => {
                 return (
                   <div
+                    key={collection.id}
                     className={`py-1 pl-4 hover:cursor-pointer hover:bg-orange-300 ${
                       selectedCollectionId === collection.id &&
                       "bg-orange-500 font-bold"
                     }`}
-                    onClick={() => {
-                      setSelectedCollectionId(collection.id);
-                    }}
+                    onClick={() => handleCollectionChange(collection)}
                   >
                     {collection.collection_name}
                   </div>
@@ -59,7 +62,10 @@ function App() {
           </div>
           <div className="w-4/5 ml-4">
             {selectedCollectionId && (
-              <CompanyTable selectedCollectionId={selectedCollectionId} />
+              <CompanyTable
+                selectedCollectionId={selectedCollectionId}
+                allCollections={collectionResponse}
+              />
             )}
           </div>
         </div>
