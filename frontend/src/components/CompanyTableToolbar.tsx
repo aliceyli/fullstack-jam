@@ -6,7 +6,7 @@ import {
 } from "../utils/jam-api";
 import { GridRowSelectionModel } from "@mui/x-data-grid";
 import { ICollection } from "../utils/jam-api";
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import useInterval from "../hooks/useInterval";
 import MoveDropdownButton from "./MoveDropdownButton";
 
@@ -38,6 +38,7 @@ const CompanyTableToolbar = ({
   const [showCompletedStatus, setShowCompletedStatus] =
     useState<boolean>(false);
 
+  const completionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const bulkMoveInProgress = !!bulkMoveJobId;
 
   const collectionOptions =
@@ -108,9 +109,13 @@ const CompanyTableToolbar = ({
         response.status === "failed"
       ) {
         setShowCompletedStatus(true);
-        setTimeout(() => {
+        if (completionTimeoutRef.current) {
+          clearTimeout(completionTimeoutRef.current);
+        }
+        completionTimeoutRef.current = setTimeout(() => {
           setShowCompletedStatus(false);
           resetMoveStatus();
+          completionTimeoutRef.current = null;
         }, 3000);
       }
     } catch (error) {
@@ -119,7 +124,18 @@ const CompanyTableToolbar = ({
     }
   };
 
-  useInterval(() => getMoveStatus(bulkMoveJobId), 2000);
+  useEffect(() => {
+    return () => {
+      if (completionTimeoutRef.current) {
+        clearTimeout(completionTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  useInterval(
+    () => getMoveStatus(bulkMoveJobId),
+    bulkMoveInProgress && !showCompletedStatus ? 2000 : null
+  );
 
   return (
     <>
