@@ -33,7 +33,10 @@ const CompanyTableToolbar = ({
   const [bulkMoveJobId, setBulkMoveJobId] = useState<string | null>(() => {
     return localStorage.getItem("bulkMoveJobId");
   });
+  const [bulkMoveStatus, setBulkMoveStatus] = useState<string | null>();
   const [bulkMovePercent, setBulkMovePercent] = useState<number>(0);
+  const [showCompletedStatus, setShowCompletedStatus] =
+    useState<boolean>(false);
 
   const bulkMoveInProgress = !!bulkMoveJobId;
 
@@ -91,18 +94,24 @@ const CompanyTableToolbar = ({
       setBulkMoveJobId(null);
       localStorage.removeItem("bulkMoveJobId");
       setBulkMovePercent(0);
+      setBulkMoveStatus(null);
     };
 
     try {
       const response = await getBulkMoveStatus(operation_id);
       setBulkMovePercent(response.progress_percentage);
+      setBulkMoveStatus(response.status);
 
       if (
         response.status === "completed" ||
         response.status === "completed_with_errors" ||
         response.status === "failed"
       ) {
-        resetMoveStatus();
+        setShowCompletedStatus(true);
+        setTimeout(() => {
+          setShowCompletedStatus(false);
+          resetMoveStatus();
+        }, 3000);
       }
     } catch (error) {
       console.error("Error getting bulk move status:", error);
@@ -165,15 +174,22 @@ const CompanyTableToolbar = ({
           menuItemPrefix="Move all to"
         />
 
-        {bulkMoveInProgress && (
+        {(bulkMoveInProgress || showCompletedStatus) && (
           <>
             <Box sx={{ width: "20%" }}>
               <LinearProgress variant="determinate" value={bulkMovePercent} />
             </Box>
-            <Typography
-              variant="body2"
-              sx={{ color: "text.secondary" }}
-            >{`${Math.round(bulkMovePercent)}% Complete`}</Typography>
+            <Typography variant="body2" sx={{ color: "text.secondary" }}>
+              {showCompletedStatus
+                ? `${
+                    bulkMoveStatus === "completed"
+                      ? "✓"
+                      : bulkMoveStatus === "failed"
+                      ? "✗"
+                      : "!"
+                  } ${bulkMoveStatus}`
+                : `${Math.round(bulkMovePercent)}% complete`}
+            </Typography>
           </>
         )}
       </div>
