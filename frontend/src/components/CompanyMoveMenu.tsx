@@ -7,6 +7,8 @@ interface CompanyMoveMenuProps {
   currentCollectionId: string;
   allCollections: ICollection[] | undefined;
   onMoveComplete: () => Promise<void>;
+  anchorEl?: HTMLElement | null;
+  onClose?: () => void;
 }
 
 const CompanyMoveMenu = ({
@@ -14,12 +16,17 @@ const CompanyMoveMenu = ({
   currentCollectionId,
   allCollections,
   onMoveComplete,
+  anchorEl,
+  onClose,
 }: CompanyMoveMenuProps) => {
   const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null);
   const [moving, setMoving] = useState(false);
 
+  const effectiveAnchor = anchorEl || menuAnchor;
+  const effectiveOnClose = onClose || (() => setMenuAnchor(null));
+
   const handleMenuItemClick = async (toCollectionId: string) => {
-    setMenuAnchor(null);
+    effectiveOnClose();
     setMoving(true);
 
     try {
@@ -43,17 +50,19 @@ const CompanyMoveMenu = ({
 
   return (
     <>
-      <IconButton
-        size="small"
-        disabled={moving}
-        onClick={(event) => setMenuAnchor(event.currentTarget)}
-      >
-        ⋮
-      </IconButton>
+      {!anchorEl && (
+        <IconButton
+          size="small"
+          disabled={moving}
+          onClick={(event) => setMenuAnchor(event.currentTarget)}
+        >
+          ⋮
+        </IconButton>
+      )}
       <Menu
-        anchorEl={menuAnchor}
-        open={Boolean(menuAnchor)}
-        onClose={() => setMenuAnchor(null)}
+        anchorEl={effectiveAnchor}
+        open={Boolean(effectiveAnchor)}
+        onClose={effectiveOnClose}
       >
         {otherCollections.length > 0 ? (
           otherCollections.map((collection) => (

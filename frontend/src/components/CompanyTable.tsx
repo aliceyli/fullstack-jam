@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { getCollectionsById, ICompany, ICollection } from "../utils/jam-api";
 import CompanyTableToolbar from "./CompanyTableToolbar";
 import CompanyMoveMenu from "./CompanyMoveMenu";
+import { IconButton } from "@mui/material";
 
 const CompanyTable = ({
   selectedCollectionId,
@@ -21,6 +22,9 @@ const CompanyTable = ({
 
   const [selectedCompanyIds, setSelectedCompanyIds] =
     useState<GridRowSelectionModel>([]);
+
+  const [activeMenuCompanyId, setActiveMenuCompanyId] = useState<number | null>(null);
+  const [menuAnchorEl, setMenuAnchorEl] = useState<HTMLElement | null>(null);
 
   const fetchCollections = useCallback(async () => {
     if (!selectedCollectionId) return;
@@ -50,6 +54,16 @@ const CompanyTable = ({
   const resetSelections = () => {
     setOffset(0);
     setSelectedCompanyIds([]);
+  };
+
+  const handleActionMenuClick = (companyId: number, anchorEl: HTMLElement) => {
+    setActiveMenuCompanyId(companyId);
+    setMenuAnchorEl(anchorEl);
+  };
+
+  const handleMenuClose = () => {
+    setActiveMenuCompanyId(null);
+    setMenuAnchorEl(null);
   };
 
   useEffect(() => {
@@ -89,13 +103,13 @@ const CompanyTable = ({
             type: "actions",
             headerName: "Move",
             getActions: (params) => [
-              <CompanyMoveMenu
+              <IconButton
                 key={params.id}
-                companyId={params.id as number}
-                currentCollectionId={selectedCollectionId}
-                allCollections={allCollections}
-                onMoveComplete={fetchCollections}
-              />,
+                size="small"
+                onClick={(event) => handleActionMenuClick(params.id as number, event.currentTarget)}
+              >
+                ⋮
+              </IconButton>,
             ],
             width: 80,
           },
@@ -118,6 +132,19 @@ const CompanyTable = ({
         }}
         keepNonExistentRowsSelected
       />
+      {activeMenuCompanyId && menuAnchorEl && (
+        <CompanyMoveMenu
+          companyId={activeMenuCompanyId}
+          currentCollectionId={selectedCollectionId}
+          allCollections={allCollections}
+          onMoveComplete={async () => {
+            handleMenuClose();
+            await fetchCollections();
+          }}
+          anchorEl={menuAnchorEl}
+          onClose={handleMenuClose}
+        />
+      )}
     </div>
   );
 };
