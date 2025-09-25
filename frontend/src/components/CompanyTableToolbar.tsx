@@ -35,7 +35,7 @@ const CompanyTableToolbar = ({
   });
   const [bulkMovePercent, setBulkMovePercent] = useState<number>(0);
 
-  const bulkMoveStarted = !!bulkMoveJobId;
+  const bulkMoveInProgress = !!bulkMoveJobId;
 
   const collectionOptions =
     allCollections?.filter((c) => c.id != selectedCollectionId) || [];
@@ -80,24 +80,33 @@ const CompanyTableToolbar = ({
   };
 
   const handleMoveAll = async (toCollectionId: string) => {
-    await startBulkMove(toCollectionId); // Empty array means move all companies
+    await startBulkMove(toCollectionId); // empty array means move all companies
   };
 
   const getMoveStatus = async (operation_id: string | null) => {
     if (!operation_id) {
       return;
     }
-    const response = await getBulkMoveStatus(operation_id);
-    setBulkMovePercent(response.progress_percentage);
-    console.log("progress:", response.progress_percentage);
-
-    if (
-      response.status === "completed" ||
-      response.status === "completed_with_errors" ||
-      response.status === "failed"
-    ) {
+    const resetMoveStatus = () => {
       setBulkMoveJobId(null);
       localStorage.removeItem("bulkMoveJobId");
+      setBulkMovePercent(0);
+    };
+
+    try {
+      const response = await getBulkMoveStatus(operation_id);
+      setBulkMovePercent(response.progress_percentage);
+
+      if (
+        response.status === "completed" ||
+        response.status === "completed_with_errors" ||
+        response.status === "failed"
+      ) {
+        resetMoveStatus();
+      }
+    } catch (error) {
+      console.error("Error getting bulk move status:", error);
+      resetMoveStatus();
     }
   };
 
@@ -143,7 +152,7 @@ const CompanyTableToolbar = ({
             loading ||
             moveLoading ||
             selectedCompanyIds.length === 0 ||
-            bulkMoveStarted
+            bulkMoveInProgress
           }
           menuItemPrefix="Move to"
         />
@@ -152,11 +161,11 @@ const CompanyTableToolbar = ({
           buttonText={`Move All (${totalTableCount})`}
           collections={collectionOptions}
           onMoveToCollection={handleMoveAll}
-          disabled={loading || bulkMoveStarted}
+          disabled={loading || bulkMoveInProgress}
           menuItemPrefix="Move all to"
         />
 
-        {bulkMoveStarted && (
+        {bulkMoveInProgress && (
           <>
             <Box sx={{ width: "20%" }}>
               <LinearProgress variant="determinate" value={bulkMovePercent} />
