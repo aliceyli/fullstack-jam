@@ -48,21 +48,21 @@ graph TB
     end
 
     %% Frontend to API connections
-    CTT -->|Move Selected/All| API_BM
-    CTT -->|Poll Status| API_BS
-    CMM -->|Individual Move| API_MC
+    CTT -->|"Move Selected/All"| API_BM
+    CTT -->|"Poll Status"| API_BS
+    CMM -->|"Individual Move"| API_MC
 
     %% API to Celery connections
-    API_BM -->|start_bulk_move.delay()| REDIS
-    API_BS -->|AsyncResult()| REDIS
+    API_BM -->|"start_bulk_move.delay()"| REDIS
+    API_BS -->|"AsyncResult()"| REDIS
 
     %% Celery to Database connections
-    T_BULK -->|Batching Logic| HELPERS
-    T_BATCH -->|DB Operations| HELPERS
+    T_BULK -->|"Batching Logic"| HELPERS
+    T_BATCH -->|"DB Operations"| HELPERS
 
     %% Data relationships
-    M_ASSOC -->|company_id| M_COMP
-    M_ASSOC -->|collection_id| M_COLL
+    M_ASSOC -->|"company_id"| M_COMP
+    M_ASSOC -->|"collection_id"| M_COLL
 
     %% Styling
     classDef frontend fill:#e1f5fe
