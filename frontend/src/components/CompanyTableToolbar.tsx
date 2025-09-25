@@ -5,10 +5,12 @@ import {
   SelectChangeEvent,
   FormControl,
   InputLabel,
+  Tooltip,
 } from "@mui/material";
 import {
   IMoveCompaniesRequest,
   moveCompaniesToCollections,
+  moveAllCompaniesToCollections,
 } from "../utils/jam-api";
 import { GridRowSelectionModel } from "@mui/x-data-grid";
 import { ICollection } from "../utils/jam-api";
@@ -42,6 +44,10 @@ const CompanyTableToolbar = ({
     (c) => c.id != selectedCollectionId
   );
 
+  const handleSelection = (e: SelectChangeEvent) => {
+    setCollectionIdDest(e.target.value);
+  };
+
   const handleSelectedMove = async () => {
     if (!collectionIdDest || selectedCompanyIds.length === 0) {
       return;
@@ -68,9 +74,26 @@ const CompanyTableToolbar = ({
     }
   };
 
-  const handleSelection = (e: SelectChangeEvent) => {
-    setCollectionIdDest(e.target.value);
+  const handleMoveAll = async () => {
+    if (!collectionIdDest) {
+      return;
+    }
+
+    const moveData: IMoveCompaniesRequest = {
+      company_ids: [],
+      from_collection_id: selectedCollectionId,
+      to_collection_id: collectionIdDest,
+    };
+
+    try {
+      await moveAllCompaniesToCollections(moveData);
+    } catch (err) {
+      console.error("Failed to move all companies:", err);
+      setError(err instanceof Error ? err.message : "Failed to move companies");
+    }
   };
+
+  // TODO: replace dropdown aand button with menu button https://mui.com/material-ui/react-menu/
   return (
     <>
       {error && (
@@ -114,18 +137,33 @@ const CompanyTableToolbar = ({
             })}
           </Select>
         </FormControl>
-        <Button
-          variant="contained"
-          onClick={handleSelectedMove}
-          disabled={
-            loading ||
-            moveLoading ||
-            !collectionIdDest ||
-            selectedCompanyIds.length === 0
-          }
-        >
-          {moveLoading ? "Moving..." : "Move Selected"}
-        </Button>
+        <Tooltip title="You must select a collection and companies to move">
+          <span>
+            <Button
+              variant="contained"
+              onClick={handleSelectedMove}
+              disabled={
+                loading ||
+                moveLoading ||
+                !collectionIdDest ||
+                selectedCompanyIds.length === 0
+              }
+            >
+              {moveLoading ? "Moving..." : "Move Selected"}
+            </Button>
+          </span>
+        </Tooltip>
+        <Tooltip title="Select a collection to move all companies to">
+          <span>
+            <Button
+              variant="contained"
+              onClick={handleMoveAll}
+              disabled={!collectionIdDest}
+            >
+              Move All
+            </Button>
+          </span>
+        </Tooltip>
       </div>
     </>
   );

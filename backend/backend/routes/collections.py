@@ -6,9 +6,18 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from backend.db import database
+from backend.tasks import start_bulk_move
+from celery_app import celery_app
 from backend.routes.companies import (
     CompanyBatchOutput,
     fetch_companies_with_liked,
+)
+from backend.helpers.collections import (
+    validate_collection_exists,
+    validate_companies_in_collection,
+    delete_company_association,
+    association_exists,
+    create_company_association
 )
 
 router = APIRouter(
@@ -35,6 +44,27 @@ class MoveCompaniesRequest(BaseModel):
 class MoveCompaniesResponse(BaseModel):
     moved_count: int
     message: str
+
+
+class BulkMoveAllRequest(BaseModel):
+    from_collection_id: uuid.UUID
+    to_collection_id: uuid.UUID
+
+
+class BulkMoveAllResponse(BaseModel):
+    operation_id: str
+    batch_task_ids: list[str]
+    total_batches: int
+    status: str
+
+
+class BulkMoveStatusResponse(BaseModel):
+    operation_id: str
+    total_batches: int
+    completed_batches: int
+    failed_batches: int
+    progress_percentage: float
+    status: str
 
 
 @router.get("", response_model=list[CompanyCollectionMetadata])
@@ -82,75 +112,28 @@ def get_company_collection_by_id(
     )
 
 
-def _validate_collection_exists(db: Session, collection_id: uuid.UUID, collection_type: str):
-    """Helper function to validate a collection exists"""
-    collection = db.query(database.CompanyCollection).filter(
-        database.CompanyCollection.id == collection_id
-    ).first()
-
-    if not collection:
-        raise HTTPException(
-            status_code=404,
-            detail=f"{collection_type} collection {collection_id} not found"
-        )
-
-    return collection
-
-
-def _validate_companies_in_collection(db: Session, company_ids: list[int], collection_id: uuid.UUID):
-    """Helper function to validate companies exist in the specified collection"""
-    existing_associations = db.query(database.CompanyCollectionAssociation).filter(
-        database.CompanyCollectionAssociation.company_id.in_(company_ids),
-        database.CompanyCollectionAssociation.collection_id == collection_id
-    ).all()
-
-    found_company_ids = {assoc.company_id for assoc in existing_associations}
-    missing_company_ids = set(company_ids) - found_company_ids
-
-    if missing_company_ids:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Companies {list(missing_company_ids)} not found in source collection"
-        )
-
-
 @router.post("/move-companies", response_model=MoveCompaniesResponse)
 def move_companies(
     request: MoveCompaniesRequest,
     db: Session = Depends(database.get_db),
 ):
     """
-    Move a small number of companies from one collection to another
+    Move companies from one collection to another synchronously
+    (Meant for small number of companies. Use /bulk-move-all for larger amounts)
 
-    This endpoint:
-    1. Removes companies from the source collection
-    2. Adds companies to the destination collection
-    3. Handles cases where companies might already exist in the destination
     """
-    from_collection = _validate_collection_exists(db, request.from_collection_id, "Source")
-    to_collection = _validate_collection_exists(db, request.to_collection_id, "Destination")
-    _validate_companies_in_collection(db, request.company_ids, request.from_collection_id)
+    from_collection = validate_collection_exists(db, request.from_collection_id, "Source")
+    to_collection = validate_collection_exists(db, request.to_collection_id, "Destination")
+    validate_companies_in_collection(db, request.company_ids, request.from_collection_id)
 
     try:
-        db.query(database.CompanyCollectionAssociation).filter(
-            database.CompanyCollectionAssociation.company_id.in_(request.company_ids),
-            database.CompanyCollectionAssociation.collection_id == request.from_collection_id
-        ).delete(synchronize_session=False)
-
         moved_count = 0
-        for company_id in request.company_ids:
-            existing = db.query(database.CompanyCollectionAssociation).filter(
-                database.CompanyCollectionAssociation.company_id == company_id,
-                database.CompanyCollectionAssociation.collection_id == request.to_collection_id
-            ).first()
 
-            if not existing:
-                new_association = database.CompanyCollectionAssociation(
-                    company_id=company_id,
-                    collection_id=request.to_collection_id
-                )
-                db.add(new_association)
-                moved_count += 1
+        for company_id in request.company_ids:
+            if delete_company_association(db, company_id, request.from_collection_id):
+                if not association_exists(db, company_id, request.to_collection_id):
+                    create_company_association(db, company_id, request.to_collection_id)
+                    moved_count += 1
 
         db.commit()
 
@@ -162,3 +145,21 @@ def move_companies(
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Failed to move companies: {str(e)}")
+
+
+@router.post("/bulk-move-all")
+def start_bulk_move_all(
+    request: MoveCompaniesRequest,
+    db: Session = Depends(database.get_db),
+):
+    """
+    Start async job to move companies from one collection to another
+    """
+    result = start_bulk_move.delay(request.from_collection_id, request.to_collection_id)
+
+    return {
+        "message": "Bulk move started",
+        "from_collection_id": str(request.from_collection_id),
+        "to_collection_id": str(request.to_collection_id),
+        "status": "started"
+    }

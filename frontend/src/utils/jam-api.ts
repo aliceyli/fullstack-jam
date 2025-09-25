@@ -27,6 +27,13 @@ export interface IMoveCompaniesResponse {
   message: string;
 }
 
+export interface IMoveAllCompaniesResponse {
+    operation_id: string;
+    batch_task_ids: string[];
+    total_batches: number;
+    status: string;
+}
+
 const BASE_URL = "http://localhost:8000";
 
 export async function getCompanies(
@@ -87,6 +94,21 @@ export async function moveCompaniesToCollections(
     return response.data;
   } catch (error) {
     console.error("Error with move: ", error);
+    throw error;
+  }
+}
+
+export async function moveAllCompaniesToCollections(
+  reqData: IMoveCompaniesRequest
+) : Promise<IMoveAllCompaniesResponse> {
+  try {    
+    const response = await axios.post(
+      `${BASE_URL}/collections/bulk-move-all`,
+      reqData
+    );
+    return response.data;
+  } catch (error) {
+    console.error("Error with bulk move: ", error);
     throw error;
   }
 }
