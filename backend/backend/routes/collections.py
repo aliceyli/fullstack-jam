@@ -6,7 +6,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from backend.db import database
-from backend.tasks import start_bulk_move
+from backend.tasks import start_bulk_move as start_bulk_move_task
 from celery_app import celery_app
 from backend.routes.companies import (
     CompanyBatchOutput,
@@ -46,12 +46,13 @@ class MoveCompaniesResponse(BaseModel):
     message: str
 
 
-class BulkMoveAllRequest(BaseModel):
+class BulkMoveRequest(BaseModel):
     from_collection_id: uuid.UUID
     to_collection_id: uuid.UUID
+    company_ids: list[int] = []
 
 
-class BulkMoveAllResponse(BaseModel):
+class BulkMoveResponse(BaseModel):
     operation_id: str
     batch_task_ids: list[str]
     total_batches: int
@@ -119,7 +120,7 @@ def move_companies(
 ):
     """
     Move companies from one collection to another synchronously
-    (Meant for small number of companies. Use /bulk-move-all for larger amounts)
+    (Meant for a small batch of moves. Use /bulk-move-all for larger amounts)
 
     """
     from_collection = validate_collection_exists(db, request.from_collection_id, "Source")
@@ -147,19 +148,100 @@ def move_companies(
         raise HTTPException(status_code=500, detail=f"Failed to move companies: {str(e)}")
 
 
-@router.post("/bulk-move-all")
-def start_bulk_move_all(
-    request: MoveCompaniesRequest,
+@router.post("/bulk-move", response_model=BulkMoveResponse)
+def start_bulk_move(
+    request: BulkMoveRequest,
     db: Session = Depends(database.get_db),
 ):
     """
-    Start async job to move companies from one collection to another
+    Start async job to move companies from one collection to another.
+    If company_ids is provided, only move those companies. Otherwise move all.
     """
-    result = start_bulk_move.delay(request.from_collection_id, request.to_collection_id)
+    company_ids = request.company_ids if request.company_ids else None
+    result = start_bulk_move_task.delay(request.from_collection_id, request.to_collection_id, company_ids)
 
-    return {
-        "message": "Bulk move started",
-        "from_collection_id": str(request.from_collection_id),
-        "to_collection_id": str(request.to_collection_id),
-        "status": "started"
-    }
+    return BulkMoveResponse(
+        operation_id=result.id,
+        batch_task_ids=[], 
+        total_batches=0, 
+        status="started"
+    )
+
+
+@router.get("/bulk-move-status/{operation_id}", response_model=BulkMoveStatusResponse)
+def get_bulk_move_status(operation_id: str):
+    """
+    Get the status of a bulk move operation
+    """
+    main_task = celery_app.AsyncResult(operation_id)
+
+    if main_task.state == 'PENDING':
+        return BulkMoveStatusResponse(
+            operation_id=operation_id,
+            total_batches=0,
+            completed_batches=0,
+            failed_batches=0,
+            progress_percentage=0.0,
+            status="pending"
+        )
+
+    if main_task.state == 'FAILURE':
+        return BulkMoveStatusResponse(
+            operation_id=operation_id,
+            total_batches=0,
+            completed_batches=0,
+            failed_batches=0,
+            progress_percentage=0.0,
+            status="failed"
+        )
+
+    if main_task.state == 'SUCCESS':
+        result = main_task.result
+        batch_task_ids = result.get("batch_task_ids", [])
+        total_batches = result.get("total_batches", 0)
+
+        if total_batches == 0:
+            return BulkMoveStatusResponse(
+                operation_id=operation_id,
+                total_batches=0,
+                completed_batches=0,
+                failed_batches=0,
+                progress_percentage=100.0,
+                status="completed"
+            )
+
+        completed_batches = 0
+        failed_batches = 0
+
+        for task_id in batch_task_ids:
+            batch_task = celery_app.AsyncResult(task_id)
+            if batch_task.state == 'SUCCESS':
+                completed_batches += 1
+            elif batch_task.state == 'FAILURE':
+                failed_batches += 1
+
+        progress_percentage = (completed_batches / total_batches) * 100 if total_batches > 0 else 100.0
+
+        if completed_batches + failed_batches == total_batches:
+            status = "completed" if failed_batches == 0 else "completed_with_errors"
+        else:
+            status = "processing"
+
+        return BulkMoveStatusResponse(
+            operation_id=operation_id,
+            total_batches=total_batches,
+            completed_batches=completed_batches,
+            failed_batches=failed_batches,
+            progress_percentage=progress_percentage,
+            status=status
+        )
+
+    return BulkMoveStatusResponse(
+        operation_id=operation_id,
+        total_batches=0,
+        completed_batches=0,
+        failed_batches=0,
+        progress_percentage=0.0,
+        status="initializing"
+    )
+

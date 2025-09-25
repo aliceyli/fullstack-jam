@@ -46,25 +46,27 @@ def bulk_move_companies_batch(company_ids: list[int], from_collection_id: uuid.U
 
 
 @celery_app.task
-def start_bulk_move(from_collection_id: uuid.UUID, to_collection_id: uuid.UUID):
+def start_bulk_move(from_collection_id: uuid.UUID, to_collection_id: uuid.UUID, company_ids: list[int] = None):
     '''
-    Splits collection companies into batches for workers to move from one collection to another
+    Splits collection companies into batches for workers to move from one collection to another.
+    If company_ids is provided, only move those companies. Otherwise, move all companies.
     '''
     from backend.db import database
 
     db = database.SessionLocal()
 
-    all_company_ids = get_all_company_ids(db, from_collection_id)
+    if company_ids:
+        all_company_ids = company_ids
+    else:
+        all_company_ids = get_all_company_ids(db, from_collection_id)
+
     batches = [all_company_ids[i:i+100] for i in range(0, len(all_company_ids), 100)]
 
     task_ids = []
     for batch in batches:
-        # returns celery.result
-        # https://docs.celeryq.dev/en/3.1/reference/celery.result.html#module-celery.result
         result = bulk_move_companies_batch.delay(batch, from_collection_id, to_collection_id)
         task_ids.append(result.id)
 
     db.close()
 
-    # returning the task_ids allows us to query for the status later
     return {"batch_task_ids": task_ids, "total_batches": len(batches), "from_collection_id": from_collection_id,"to_collection_id": to_collection_id}

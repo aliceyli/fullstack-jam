@@ -2,6 +2,7 @@ import { DataGrid, GridRowSelectionModel } from "@mui/x-data-grid";
 import { useCallback, useEffect, useState } from "react";
 import { getCollectionsById, ICompany, ICollection } from "../utils/jam-api";
 import CompanyTableToolbar from "./CompanyTableToolbar";
+import CompanyMoveMenu from "./CompanyMoveMenu";
 
 const CompanyTable = ({
   selectedCollectionId,
@@ -13,12 +14,11 @@ const CompanyTable = ({
   const [response, setResponse] = useState<ICompany[]>([]);
   const [total, setTotal] = useState<number>();
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null); // TODO: handle and display errors
+  const [error, setError] = useState<string | null>(null);
 
   const [offset, setOffset] = useState<number>(0);
   const [pageSize, setPageSize] = useState(25);
 
-  const [collectionIdDest, setCollectionIdDest] = useState("");
   const [selectedCompanyIds, setSelectedCompanyIds] =
     useState<GridRowSelectionModel>([]);
 
@@ -50,7 +50,6 @@ const CompanyTable = ({
   const resetSelections = () => {
     setOffset(0);
     setSelectedCompanyIds([]);
-    setCollectionIdDest("");
   };
 
   useEffect(() => {
@@ -64,25 +63,44 @@ const CompanyTable = ({
   return (
     <div style={{ height: 600, width: "100%" }}>
       <CompanyTableToolbar
-        collectionIdDest={collectionIdDest}
-        setCollectionIdDest={setCollectionIdDest}
         selectedCollectionId={selectedCollectionId}
         allCollections={allCollections}
         selectedCompanyIds={selectedCompanyIds}
         loading={loading}
         resetSelections={resetSelections}
-        fetchCollections={fetchCollections}
+        totalTableCount={total ?? 0}
       />
       <DataGrid
         rows={response}
         loading={loading}
+        slotProps={{
+          loadingOverlay: {
+            variant: "linear-progress",
+            noRowsVariant: "skeleton",
+          },
+        }}
         rowHeight={30}
         columns={[
           { field: "liked", headerName: "Liked", width: 90 },
           { field: "id", headerName: "ID", width: 90 },
           { field: "company_name", headerName: "Company Name", width: 200 },
+          {
+            field: "actions",
+            type: "actions",
+            headerName: "Move",
+            getActions: (params) => [
+              <CompanyMoveMenu
+                key={params.id}
+                companyId={params.id as number}
+                currentCollectionId={selectedCollectionId}
+                allCollections={allCollections}
+                onMoveComplete={fetchCollections}
+              />,
+            ],
+            width: 80,
+          },
         ]}
-        rowCount={total}
+        rowCount={total || 0}
         checkboxSelection
         onRowSelectionModelChange={(ids) => {
           setSelectedCompanyIds(ids);

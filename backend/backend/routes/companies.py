@@ -32,7 +32,7 @@ def fetch_companies_with_liked(
 
     liked_associations = (
         db.query(database.CompanyCollectionAssociation)
-        .filter(database.Company.id.in_(company_ids))
+        .filter(database.CompanyCollectionAssociation.company_id.in_(company_ids))
         .filter(
             database.CompanyCollectionAssociation.collection_id == liked_list.id,
         )

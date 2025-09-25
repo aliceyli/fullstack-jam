@@ -27,11 +27,25 @@ export interface IMoveCompaniesResponse {
   message: string;
 }
 
-export interface IMoveAllCompaniesResponse {
+export interface IBulkMoveRequest {
+  from_collection_id: string;
+  to_collection_id: string;
+  company_ids?: number[]; // Optional - if empty/undefined, move all companies
+}
+export interface IBulkMoveResponse {
+  operation_id: string;
+  batch_task_ids: string[];
+  total_batches: number;
+  status: string;
+}
+
+export interface IBulkMoveStatusResponse {
     operation_id: string;
-    batch_task_ids: string[];
     total_batches: number;
-    status: string;
+    completed_batches: number;
+    failed_batches: number;
+    progress_percentage: number;
+    status: string
 }
 
 const BASE_URL = "http://localhost:8000";
@@ -99,16 +113,30 @@ export async function moveCompaniesToCollections(
 }
 
 export async function moveAllCompaniesToCollections(
-  reqData: IMoveCompaniesRequest
-) : Promise<IMoveAllCompaniesResponse> {
+  reqData: IBulkMoveRequest
+) : Promise<IBulkMoveResponse> {
   try {    
     const response = await axios.post(
-      `${BASE_URL}/collections/bulk-move-all`,
+      `${BASE_URL}/collections/bulk-move`,
       reqData
     );
     return response.data;
   } catch (error) {
     console.error("Error with bulk move: ", error);
+    throw error;
+  }
+}
+
+export async function getBulkMoveStatus(
+  operationId : string
+) : Promise<IBulkMoveStatusResponse> {
+  try {
+    const response = await axios.get(
+      `${BASE_URL}/collections/bulk-move-status/${operationId}`
+    );
+    return response.data;
+  } catch (error) {
+    console.error("Error getting bulk move status ", error);
     throw error;
   }
 }
