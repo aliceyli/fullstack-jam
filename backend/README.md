@@ -55,6 +55,10 @@ The database will automatically get seeded (see main.py) with:
 3. Run `\dt` to list all tables and confirm you are connected.
 4. Execute any SQL query: `SELECT * FROM companies;`
 
+## Running the Celery App
+
+`poetry run celery -A celery_app worker --loglevel=info`
+
 ## Modifying Tables & Schema
 
 Tables and schemas are dynamically loaded each time the FastAPI server loads up - see [here](main.py#L14).
