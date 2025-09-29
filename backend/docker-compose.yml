@@ -19,6 +19,18 @@ services:
     image: redis:7-alpine
     ports:
       - "6379:6379"
+  
+  celery-worker:
+    build: .
+    volumes:
+      - .:/app
+    command: ["celery", "-A", "celery_app", "worker", "--loglevel=info"]
+    depends_on:
+      - postgres-jam-db
+      - redis
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres-jam-db:5432/harmonicjam
+      REDIS_URL: redis://redis:6379/0
 
   web-api:
     build: .
