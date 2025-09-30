@@ -14,34 +14,58 @@ logger = logging.getLogger(__name__)
 @celery_app.task
 def bulk_move_companies_batch(company_ids: list[int], from_collection_id: uuid.UUID, to_collection_id: uuid.UUID):
     '''
-    Moves a batch of companies from one collection to another
+    Moves a batch of companies from one collection to another.
+    Handles individual failures gracefully - continues processing remaining companies.
     '''
     from backend.db import database
 
     db = database.SessionLocal()
     moved_count = 0
+    failed_companies = []
 
     logger.info(f"Starting batch move of {len(company_ids)} companies")
 
     try:
         for company_id in company_ids:
-            if delete_company_association(db, company_id, from_collection_id):
-                if not association_exists(db, company_id, to_collection_id):
-                    create_company_association(db, company_id, to_collection_id)
-                    moved_count += 1
+            try:
+                with db.begin_nested(): # will rollback individual failed moves
+                    if delete_company_association(db, company_id, from_collection_id):
+                        if not association_exists(db, company_id, to_collection_id):
+                            create_company_association(db, company_id, to_collection_id)
+                            moved_count += 1
+            except Exception as e:
+                logger.warning(f"Failed to move company {company_id}: {e}")
+                failed_companies.append({"company_id": company_id, "error": str(e)})
 
         db.commit()
-        logger.info(f"Successfully moved {moved_count} companies")
+        logger.info(f"Successfully moved {moved_count} companies, {len(failed_companies)} failed")
+
+        status = "completed" if len(failed_companies) == 0 else "completed_with_errors"
+        return {
+            "moved_count": moved_count,
+            "batch_size": len(company_ids),
+            "failed_count": len(failed_companies),
+            "failed_companies": failed_companies,
+            "from_collection_id": from_collection_id,
+            "to_collection_id": to_collection_id,
+            "status": status
+        }
 
     except Exception as e:
         db.rollback()
-        logger.error(f"Failed to move companies: {e}")
-        raise e
+        logger.error(f"Batch processing failed: {e}")
+        return {
+            "moved_count": moved_count,
+            "batch_size": len(company_ids),
+            "failed_count": len(failed_companies),
+            "failed_companies": failed_companies,
+            "from_collection_id": from_collection_id,
+            "to_collection_id": to_collection_id,
+            "status": "failed",
+            "error": str(e)
+        }
     finally:
         db.close()
-
-    print(f"Completed moving {moved_count} companies")
-    return moved_count
 
 
 
@@ -69,4 +93,10 @@ def start_bulk_move(from_collection_id: uuid.UUID, to_collection_id: uuid.UUID, 
 
     db.close()
 
-    return {"batch_task_ids": task_ids, "total_batches": len(batches), "from_collection_id": from_collection_id,"to_collection_id": to_collection_id}
+    return {
+        "batch_task_ids": task_ids,
+        "total_batches": len(batches),
+        "from_collection_id": from_collection_id,
+        "to_collection_id": to_collection_id,
+        "company_count": len(all_company_ids)
+    }

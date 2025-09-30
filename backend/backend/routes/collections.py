@@ -167,81 +167,59 @@ def start_bulk_move(
         status="started"
     )
 
+def _create_status_response(operation_id: str, status: str, **kwargs):
+    """Helper to create BulkMoveStatusResponse with defaults"""
+    defaults = {
+        "operation_id": operation_id,
+        "total_batches": 0,
+        "completed_batches": 0,
+        "failed_batches": 0,
+        "progress_percentage": 0.0,
+        "status": status
+    }
+    defaults.update(kwargs)
+    return BulkMoveStatusResponse(**defaults)
 
 @router.get("/bulk-move-status/{operation_id}", response_model=BulkMoveStatusResponse)
 def get_bulk_move_status(operation_id: str):
-    """
-    Get the status of a bulk move operation
-    """
+    """Get the status of a bulk move operation (coordinator task only)"""
     main_task = celery_app.AsyncResult(operation_id)
 
-    if main_task.state == 'PENDING':
-        return BulkMoveStatusResponse(
-            operation_id=operation_id,
-            total_batches=0,
-            completed_batches=0,
-            failed_batches=0,
-            progress_percentage=0.0,
-            status="pending"
-        )
+    # Verify this is a coordinator task by checking the task name
+    if main_task.name and main_task.name != "backend.tasks.start_bulk_move":
+        raise HTTPException(status_code=400, detail="Invalid operation_id: not a coordinator task")
 
+    if main_task.state == 'PENDING':
+        return _create_status_response(operation_id, "pending")
     if main_task.state == 'FAILURE':
-        return BulkMoveStatusResponse(
-            operation_id=operation_id,
-            total_batches=0,
-            completed_batches=0,
-            failed_batches=0,
-            progress_percentage=0.0,
-            status="failed"
-        )
+        return _create_status_response(operation_id, "failed")
 
     if main_task.state == 'SUCCESS':
         result = main_task.result
+
         batch_task_ids = result.get("batch_task_ids", [])
         total_batches = result.get("total_batches", 0)
 
         if total_batches == 0:
-            return BulkMoveStatusResponse(
-                operation_id=operation_id,
-                total_batches=0,
-                completed_batches=0,
-                failed_batches=0,
-                progress_percentage=100.0,
-                status="completed"
-            )
+            return _create_status_response(operation_id, "completed", progress_percentage=100.0)
 
-        completed_batches = 0
-        failed_batches = 0
+        completed = sum(1 for tid in batch_task_ids if celery_app.AsyncResult(tid).state == 'SUCCESS')
+        failed = sum(1 for tid in batch_task_ids if celery_app.AsyncResult(tid).state == 'FAILURE')
 
-        for task_id in batch_task_ids:
-            batch_task = celery_app.AsyncResult(task_id)
-            if batch_task.state == 'SUCCESS':
-                completed_batches += 1
-            elif batch_task.state == 'FAILURE':
-                failed_batches += 1
-
-        progress_percentage = (completed_batches / total_batches) * 100 if total_batches > 0 else 100.0
-
-        if completed_batches + failed_batches == total_batches:
-            status = "completed" if failed_batches == 0 else "completed_with_errors"
+        progress = (completed / total_batches) * 100 if total_batches > 0 else 100.0
+        if completed + failed == total_batches:
+            status = "completed" if failed == 0 else "completed_with_errors"
         else:
             status = "processing"
 
-        return BulkMoveStatusResponse(
-            operation_id=operation_id,
+        return _create_status_response(
+            operation_id, 
+            status,
             total_batches=total_batches,
-            completed_batches=completed_batches,
-            failed_batches=failed_batches,
-            progress_percentage=progress_percentage,
-            status=status
+            completed_batches=completed,
+            failed_batches=failed,
+            progress_percentage=progress
         )
 
-    return BulkMoveStatusResponse(
-        operation_id=operation_id,
-        total_batches=0,
-        completed_batches=0,
-        failed_batches=0,
-        progress_percentage=0.0,
-        status="initializing"
-    )
+    return _create_status_response(operation_id, "initializing")
 
