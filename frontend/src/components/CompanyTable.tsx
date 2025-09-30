@@ -23,7 +23,9 @@ const CompanyTable = ({
   const [selectedCompanyIds, setSelectedCompanyIds] =
     useState<GridRowSelectionModel>([]);
 
-  const [activeMenuCompanyId, setActiveMenuCompanyId] = useState<number | null>(null);
+  const [activeMenuCompanyId, setActiveMenuCompanyId] = useState<number | null>(
+    null
+  );
   const [menuAnchorEl, setMenuAnchorEl] = useState<HTMLElement | null>(null);
 
   const fetchCollections = useCallback(async () => {
@@ -83,6 +85,7 @@ const CompanyTable = ({
         loading={loading}
         resetSelections={resetSelections}
         totalTableCount={total ?? 0}
+        onMoveComplete={async () => await fetchCollections()}
       />
       <DataGrid
         rows={response}
@@ -106,7 +109,12 @@ const CompanyTable = ({
               <IconButton
                 key={params.id}
                 size="small"
-                onClick={(event) => handleActionMenuClick(params.id as number, event.currentTarget)}
+                onClick={(event) =>
+                  handleActionMenuClick(
+                    params.id as number,
+                    event.currentTarget
+                  )
+                }
               >
                 ⋮
               </IconButton>,

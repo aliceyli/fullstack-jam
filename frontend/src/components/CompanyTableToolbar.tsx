@@ -17,6 +17,7 @@ interface CompanyTableToolbarProps {
   loading: boolean;
   resetSelections: () => void;
   totalTableCount: number;
+  onMoveComplete: () => Promise<void>;
 }
 
 const CompanyTableToolbar = ({
@@ -26,6 +27,7 @@ const CompanyTableToolbar = ({
   loading,
   resetSelections,
   totalTableCount,
+  onMoveComplete,
 }: CompanyTableToolbarProps) => {
   const [moveLoading, setMoveLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -131,6 +133,15 @@ const CompanyTableToolbar = ({
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (
+      bulkMoveStatus === "completed" ||
+      bulkMoveStatus === "completed_with_errors"
+    ) {
+      onMoveComplete();
+    }
+  }, [bulkMoveStatus]);
 
   useInterval(
     () => getMoveStatus(bulkMoveJobId),
