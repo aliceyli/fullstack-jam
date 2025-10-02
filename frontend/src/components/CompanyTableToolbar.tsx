@@ -29,7 +29,8 @@ const CompanyTableToolbar = ({
   totalTableCount,
   onMoveComplete,
 }: CompanyTableToolbarProps) => {
-  const [moveLoading, setMoveLoading] = useState(false);
+  const [moveSelectedLoading, setMoveSelectedLoading] = useState(false);
+  const [moveAllLoading, setMoveAllLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [bulkMoveJobId, setBulkMoveJobId] = useState<string | null>(() => {
@@ -48,7 +49,8 @@ const CompanyTableToolbar = ({
 
   const startBulkMove = async (
     toCollectionId: string,
-    companyIds: number[] = []
+    companyIds: number[] = [],
+    setButtonLoading: (arg0: boolean) => void
   ) => {
     const moveData: IBulkMoveRequest = {
       from_collection_id: selectedCollectionId,
@@ -57,36 +59,36 @@ const CompanyTableToolbar = ({
     };
 
     setError(null);
+    setButtonLoading(true);
 
     try {
       const response = await moveAllCompaniesToCollections(moveData);
       setBulkMoveJobId(response.operation_id);
       localStorage.setItem("bulkMoveJobId", response.operation_id);
+      if (selectedCollectionId.length > 0) resetSelections();
+
       return response;
     } catch (err) {
       console.error("Failed to move companies:", err);
       setError(err instanceof Error ? err.message : "Failed to move companies");
       throw err;
+    } finally {
+      setButtonLoading(false);
     }
   };
 
   const handleSelectedMove = async (toCollectionId: string) => {
     if (selectedCompanyIds.length === 0) return;
 
-    setMoveLoading(true);
-    try {
-      await startBulkMove(
-        toCollectionId,
-        selectedCompanyIds.map((id) => Number(id))
-      );
-      resetSelections();
-    } finally {
-      setMoveLoading(false);
-    }
+    await startBulkMove(
+      toCollectionId,
+      selectedCompanyIds.map((id) => Number(id)),
+      setMoveSelectedLoading
+    );
   };
 
   const handleMoveAll = async (toCollectionId: string) => {
-    await startBulkMove(toCollectionId); // empty array means move all companies
+    await startBulkMove(toCollectionId, [], setMoveAllLoading); // empty array means move all companies
   };
 
   const getMoveStatus = async (operation_id: string | null) => {
@@ -172,11 +174,7 @@ const CompanyTableToolbar = ({
         }}
       >
         <MoveDropdownButton
-          buttonText={
-            moveLoading
-              ? "Moving..."
-              : `Move Selected (${selectedCompanyIds.length})`
-          }
+          buttonText={`Move Selected (${selectedCompanyIds.length})`}
           tooltipText={
             selectedCompanyIds.length === 0
               ? "Select companies below to move to another collection"
@@ -186,19 +184,21 @@ const CompanyTableToolbar = ({
           onMoveToCollection={handleSelectedMove}
           disabled={
             loading ||
-            moveLoading ||
+            moveSelectedLoading ||
             selectedCompanyIds.length === 0 ||
             bulkMoveInProgress
           }
           menuItemPrefix="Move to"
+          isLoading={moveSelectedLoading}
         />
 
         <MoveDropdownButton
           buttonText={`Move All (${totalTableCount})`}
           collections={collectionOptions}
           onMoveToCollection={handleMoveAll}
-          disabled={loading || bulkMoveInProgress}
+          disabled={loading || moveAllLoading || bulkMoveInProgress}
           menuItemPrefix="Move all to"
+          isLoading={moveAllLoading}
         />
 
         {(bulkMoveInProgress || showCompletedStatus) && (

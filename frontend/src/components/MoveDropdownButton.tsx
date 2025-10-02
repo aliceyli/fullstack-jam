@@ -9,6 +9,7 @@ interface MoveDropdownButtonProps {
   onMoveToCollection: (collectionId: string) => Promise<void>;
   disabled?: boolean;
   menuItemPrefix: string;
+  isLoading: boolean;
 }
 
 const MoveDropdownButton = ({
@@ -18,12 +19,13 @@ const MoveDropdownButton = ({
   onMoveToCollection,
   disabled = false,
   menuItemPrefix,
+  isLoading,
 }: MoveDropdownButtonProps) => {
   const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null);
 
   const handleMenuItemClick = async (collectionId: string) => {
-    setMenuAnchor(null);
     await onMoveToCollection(collectionId);
+    setMenuAnchor(null);
   };
 
   const ButtonComponent = (
@@ -32,7 +34,7 @@ const MoveDropdownButton = ({
       disabled={disabled}
       onClick={(event) => setMenuAnchor(event.currentTarget)}
     >
-      {buttonText} ▼
+      {isLoading ? "Moving..." : buttonText} ▼
     </Button>
   );
 
